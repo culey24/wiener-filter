@@ -1,10 +1,9 @@
 # Wiener filter - MARS compatible
-
 # Assembler: MARS / SPIM
 
 .data
 filename_input:   .asciiz "input/tc_1_input_1.txt"   
-filename_desired: .asciiz "desired/tc_0_desired.txt"  
+filename_desired: .asciiz "desired/tc_1_desired.txt"  
 filename_output:  .asciiz "output/tc_1_output_1.txt"    
 .align 2
 buffer:     .space 4000
@@ -17,9 +16,9 @@ array_y_str: .space 2000
 
 # parameters
 maxSamples: .word 500
-M_const:    .word 2         # change if you want a different filter length  
+M_const:    .word 2         
 
-# working/algorithm arrays (make bigger if you increase M)
+# working/algorithm arrays 
 Rxx:        .space 64
 Rdx:        .space 64
 w:          .space 64
@@ -34,138 +33,118 @@ error_msg:  .asciiz "Error: size not match\n"
 
 const_zero: .float 0.0
 const_one:  .float 1.0
-const_ten:  .float 10.0     # Hằng số cho hàm làm tròn
+const_ten:  .float 10.0    
 
-# *** Dữ liệu được thêm vào từ file test_print_output.asm ***
-string_buffer:   .space 64       # Bộ đệm để xây dựng chuỗi
+string_buffer:   .space 64     
 str_minus:       .asciiz "-"
 str_dot:         .asciiz "."
 str_zero:        .asciiz "0"
 
 
-        .text
-        .globl main
+.text
+.globl main
 main:
-    # --- ĐỌC 2 FILE ĐẦU VÀO (ĐÃ VIẾT LẠI) ---
     jal read_input_file
-    move $s5, $v0           # $s5 = N_x (số lượng x)
+    move $s5, $v0           # $s5 = N_x 
     
     jal read_desired_file
-    move $s7, $v0           # $s7 = N_d (số lượng d)
+    move $s7, $v0           # $s7 = N_d 
 
-    # --- KIỂM TRA KÍCH THƯỚC (Logic gốc từ parse_done) ---
+    #size check 
     bne $s5, $s7, print_size_error # if (N_x != N_d)
     
-    # s5 = N (số lượng mẫu)
-    beqz $s5, exit_prog     # if (N == 0), thoát
+    # s5 = N
+    beqz $s5, exit_prog     # if (N == 0), 
 
-    # --- NHẢY ĐẾN LOGIC WIENER GỐC ---
-    j parse_done        # Bắt đầu tính toán
+    j parse_done      
 
-#-------------------------------------------------
-# read_input_file: Đọc input.txt vào array_x
-# (Hàm mới)
-#-------------------------------------------------
 read_input_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    # Mở file
+    # file open
     li $v0, 13
     la $a0, filename_input
     li $a1, 0
     syscall
-    move $s0, $v0       # file descriptor in s0
+    move $s0, $v0      
 
-    # Đọc vào buffer
+    # read to buffer
     li $v0, 14
     move $a0, $s0
     la $a1, buffer
     li $a2, 4000
     syscall
 
-    # Đóng file
+    # file close
     li $v0, 16
     move $a0, $s0
     syscall
 
-    # --- Bắt đầu phân tích buffer ---
-    la $s1, buffer      # s1 = con trỏ phân tích
-    la $s2, array_x     # s2 = con trỏ mảng đích
-    li $t1, 0           # t1 = i (số đếm)
+    la $s1, buffer      
+    la $s2, array_x    
+    li $t1, 0          
     
-    # Gọi hàm parse_loop_new
-    move $a0, $s1       # a0 = con trỏ buffer
-    move $a1, $s2       # a1 = con trỏ mảng đích
+    # parse_loop_new call
+    move $a0, $s1     
+    move $a1, $s2       
     jal parse_loop_new
-    move $v0, $t1       # $v0 = số lượng đã đọc ($t1 được cập nhật bởi parse_loop_new)
+    move $v0, $t1      
 
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
-#-------------------------------------------------
-# read_desired_file: Đọc desired.txt vào array_d
-# (Hàm mới)
-#-------------------------------------------------
 read_desired_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    # Mở file
+    # file open
     li $v0, 13
     la $a0, filename_desired
     li $a1, 0
     syscall
     move $s0, $v0       # file descriptor in s0
 
-    # Đọc vào buffer
+    # read to buffet
     li $v0, 14
     move $a0, $s0
     la $a1, buffer
     li $a2, 4000
     syscall
 
-    # Đóng file
+    # file closee
     li $v0, 16
     move $a0, $s0
     syscall
 
-    # --- Bắt đầu phân tích buffer ---
-    la $s1, buffer      # s1 = con trỏ phân tích
-    la $s3, array_d     # s3 = con trỏ mảng đích
-    li $t1, 0           # t1 = i (số đếm)
+    la $s1, buffer     
+    la $s3, array_d    
+    li $t1, 0          
 
-    # Gọi hàm parse_loop_new
-    move $a0, $s1       # a0 = con trỏ buffer
-    move $a1, $s3       # a1 = con trỏ mảng đích
+    # parse_loop_new call
+    move $a0, $s1      
+    move $a1, $s3       
     jal parse_loop_new
-    move $v0, $t1       # $v0 = số lượng đã đọc ($t1 được cập nhật bởi parse_loop_new)
+    move $v0, $t1       
 
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     jr $ra
 
-#-------------------------------------------------
-# parse_loop_new: 
-#   Vòng lặp phân tích chung, đọc TẤT CẢ các số
-#   từ buffer (a0) và lưu vào mảng (a1).
-#   Input: $a0 (buffer_ptr), $a1 (array_ptr)
-#   Output: $t1 (số lượng đọc), $a0 (con trỏ buffer mới)
-#-------------------------------------------------
 parse_loop_new:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     
-    move $s1, $a0       # s1 = con trỏ buffer
-    move $s2, $a1       # s2 = con trỏ mảng
-    li $t1, 0           # t1 = i (bộ đếm, sẽ được trả về)
+    move $s1, $a0       
+    move $s2, $a1       
+    li $t1, 0           
     
 parse_loop_new_start:
     lb $t3, 0($s1)      # t3 = *s1
     beqz $t3, parse_loop_new_done  # end of buffer
     
-    # --- Bỏ qua whitespace trước khi gọi hàm ---
+    # skip whitespaces
     li $t4, 32
     beq $t3, $t4, adv_char_new
     li $t4, 9
@@ -183,12 +162,8 @@ adv_char_new:
     j parse_loop_new_start
 
 call_parse_number:
-    # --- Gọi hàm phân tích 1 số ---
-    # $s1 sẽ được cập nhật bên trong parse_number_func
     jal parse_number_func
-    # $f0 chứa giá trị float
-    
-    # --- Lưu giá trị vào mảng ---
+
     sll $t4, $t1, 2     # t4 = i * 4
     add $t5, $s2, $t4   # t5 = &array[i]
     swc1 $f0, 0($t5)    # array[i] = $f0
@@ -201,15 +176,8 @@ parse_loop_new_done:
     addi $sp, $sp, 4
     jr $ra
 
-#-------------------------------------------------
-# parse_number_func: 
-#   Hàm phân tích 1 số float từ buffer
-#   (Logic được lấy từ HPHONG_main.asm gốc)
-#   Input: $s1 = con trỏ buffer
-#   Output: $f0 = giá trị float, $s1 = con trỏ buffer mới
-#-------------------------------------------------
 parse_number_func:
-    # (Đã xóa skip_ws: vì nó được xử lý bởi parse_loop_new)
+    # deleted*
     
 # parse_number: parse one decimal number with optional sign and fractional part
 # result in $f0. Advances pointer $s1 to first byte after token.
@@ -217,9 +185,9 @@ parse_number:
     # default sign = +1 in t5
     li $t5, 1
     lb $t3, 0($s1)
-    li $t4, 45          # '-'
+    li $t4, 45          # -
     beq $t3, $t4, sign_minus
-    li $t4, 43          # '+'
+    li $t4, 43          # +
     beq $t3, $t4, sign_plus
     j parse_int
 sign_minus:
@@ -231,7 +199,7 @@ sign_plus:
     addi $s1, $s1, 1
 
 parse_int:
-    li $t6, 0           # integer accumulator
+    li $t6, 0          
     lb $t3, 0($s1)
 int_loop:
     li $t4, 48
@@ -318,32 +286,24 @@ use_f10:
     cvt.s.w $f12, $f12
     mul.s $f0, $f10, $f12     # parsed float now in $f0
     
-    # (Kết thúc hàm)
     jr $ra
 
 parse_number_return:
     jr $ra
 
-# -----------------------------------------------
-# BẮT ĐẦU LOGIC WIENER GỐC TỪ HPHONG_main.asm
-# -----------------------------------------------
 parse_done:
-    # (Đã di chuyển kiểm tra $s5 và $s7 (t1, t2) lên hàm main)
     # (s5 = N)
     
     # load M
     la $t0, M_const
     lw $s6, 0($t0)      # s6 = M
     
-    # (Tải địa chỉ cơ sở vào thanh ghi s-registers)
     la $s2, array_x
     la $s3, array_d
     la $s4, array_y
 
-    # ---------- compute Rxx[k], Rdx[k] for k = 0..M-1 ----------
     li $t7, 0           # k = 0
 
-    # (Đã xóa lệnh in newline thừa)
 k_loop:
     bge $t7, $s6, k_done
     # sum_xx, sum_dx = 0.0
@@ -400,7 +360,6 @@ n_done2:
     addi $t7, $t7, 1
     j k_loop
 k_done:
-    # ---------- Build Toeplitz Rmat and augmented Raug ----------
     li $t8, 0           # i = 0 (using t8 for t28)
 i_build:
     bge $t8, $s6, build_done
@@ -435,8 +394,7 @@ store_aug:
     la $t2, Rdx
     add $t3, $t2, $t1
     lwc1 $f31, 0($t3)
-    # addr = i*(M+1) + M  <- This was i*M + M in original, Raug is (M+1) wide
-    # Raug width is M+1
+
     addi $t0, $s6, 1      # t0 = M+1
     mul $t4, $t8, $t0     # i * (M+1)
     add $t4, $t4, $s6     # i*(M+1) + M
@@ -448,7 +406,7 @@ store_aug:
     addi $t8, $t8, 1
     j i_build
 build_done:
-    # copy Rmat into augmented left M columns
+    # copy rmat into augmented left M columns
     li $t9, 0           # i = 0 (using t9 for t15)
 copy_rows:
     bge $t9, $s6, copy_done
@@ -478,7 +436,7 @@ next_row_copy:
     addi $t9, $t9, 1
     j copy_rows
 copy_done:
-    # ---------- Gaussian elimination (no pivoting) on Raug (M x (M+1)) ----------
+    # Gaussian elimination (no pivoting) on Raug (M x (M+1))
     # s6 = M
     addi $t8, $s6, 1      # t8 = M+1 (width of Raug)
     li $t0, 0           # pivot row i
@@ -551,7 +509,7 @@ next_pivot:
     addi $t0, $t0, 1
     j elim_outer
 elim_done:
-    # ---------- back substitution ----------
+    # back substitution
     # s6 = M, t8 = M+1
     add $t0, $s6, $zero
     addi $t0, $t0, -1     # i = M-1
@@ -598,7 +556,7 @@ compute_rhs2:
     addi $t0, $t0, -1
     j backsub_outer
 backsub_done:
-    # ---------- compute y[n] ----------
+    # compute y[n]
     li $t0, 0           # n = 0
 y_compute:
     bge $t0, $s5, after_y_compute
@@ -634,7 +592,7 @@ after_k_for_y:
     addi $t0, $t0, 1
     j y_compute
 after_y_compute:
-    # ---------- compute MMSE ----------
+    # compute MMSE 
     l.s $f16, const_zero  # f16 = $f_mmse_sum
     li $t0, 0           # n = 0
 mmse_loop2:
@@ -661,8 +619,7 @@ mmse_done2:
     cvt.s.w $f20, $f20
     div.s $f16, $f16, $f20  # f16 = $f_mmse
 
-    # ---------- print y[] ----------
-    # *** ĐÃ SỬA ĐỔI: Sử dụng chuỗi mới "Filtered output: " ***
+    # print y[]
     la $a0, print_output
     li $v0, 4
     syscall
@@ -675,7 +632,6 @@ print_yloop:
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     
-    # *** ĐÃ THÊM: Làm tròn $f12 trước khi in ***
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal round_to_one_decimal
@@ -690,7 +646,6 @@ print_yloop:
     addi $t0, $t0, 1
     j print_yloop
 print_done:
-    # *** ĐÃ SỬA ĐỔI: Xóa 1 newline để khớp format file ***
     # la $a0, newline
     # li $v0, 4
     # syscall
@@ -705,7 +660,6 @@ print_done:
 
     mov.s $f12, $f16      # move $f_mmse to $f12
     
-    # *** ĐÃ THÊM: Làm tròn $f12 (MMSE) trước khi in ***
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal round_to_one_decimal
@@ -718,7 +672,6 @@ print_done:
     li $v0, 4
     syscall
 
-    # *** ĐÃ THÊM: Gọi hàm ghi file ***
     jal print_to_file
 
 exit_prog:
@@ -730,12 +683,7 @@ print_size_error:
     la $a0, error_msg
     syscall
     j exit_prog 
-# -----------------------------------------------------------------
-# Hàm làm tròn đến 1 chữ số thập phân
-# Input: $f12 (giá trị cần làm tròn)
-# Output: $f12 (giá trị đã làm tròn)
-# Clobbers: $f1, $f2
-# -----------------------------------------------------------------
+
 round_to_one_decimal:
     addi $sp, $sp, -12
     sw $ra, 0($sp)
@@ -747,131 +695,105 @@ round_to_one_decimal:
     mul.s $f2, $f12, $f1
     
     # f2 = round_to_int(f2)
-    round.w.s $f2, $f2      # làm tròn đến số nguyên gần nhất
+    round.w.s $f2, $f2     
     
     # f2 = (float)f2
-    cvt.s.w $f2, $f2      # chuyển đổi (int)f2 về (float)f2
+    cvt.s.w $f2, $f2     
     
     # f12 = f2 / 10.0
     div.s $f12, $f2, $f1
     
     lw $ra, 0($sp)
-    l.s $f1, 4($sp)         # Khôi phục $f1
-    l.s $f2, 8($sp)         # Khôi phục $f2
+    l.s $f1, 4($sp)         
+    l.s $f2, 8($sp)         
     addi $sp, $sp, 12
     jr $ra
 
-# -----------------------------------------------
-# *** CÁC HÀM MỚI ĐƯỢC THÊM VÀO TỪ FILE test_print_output.asm ***
-# -----------------------------------------------
-
-#-------------------------------------------------
-# print_to_file: 
-#   *** HÀM MỚI (DỰA TRÊN TEST_PRINT_OUTPUT.ASM) ***
-#   Ghi kết quả (đã làm tròn) ra output.txt bằng cách
-#   chuyển đổi float-sang-string.
-#-------------------------------------------------
 print_to_file:
     addi $sp, $sp, -8
-    sw $ra, 4($sp)          # Lưu $ra
-    sw $s7, 0($sp)          # *** LƯU $s7 (thanh ghi chúng ta sẽ dùng) ***
+    sw $ra, 4($sp)        
+    sw $s7, 0($sp)   
 
-    # Mở file output.txt
     li $v0, 13              # syscall 13: open file
-    la $a0, filename_output # tên file
-    li $a1, 1               # cờ = write
+    la $a0, filename_output 
+    li $a1, 1             
     syscall
-    move $s0, $v0           # $s0 = file descriptor (quan trọng!)
+    move $s0, $v0           # $s0 = file descriptor 
 
-    # Ghi "Filtered output: "
     li $v0, 15              # syscall 15: write to file
     move $a0, $s0
     la $a1, print_output
-    li $a2, 17              # độ dài chuỗi "Filtered output: "
+    li $a2, 17              #  "Filtered output: " lenght
     syscall
 
-    # Ghi N giá trị y[n] (N = $s5)
-    li $s7, 0               # *** SỬA LỖI: Sử dụng $s7 làm bộ đếm i (thay vì $t0) ***
+    li $s7, 0            
 file_yloop:
     bge $s7, $s5, file_print_done # i >= N (s5=N)
-    
-    # (Xóa phần lưu/khôi phục $t0 cũ)
 
-    sll $t1, $s7, 2         # *** SỬA LỖI: Dùng $s7 ***
+    sll $t1, $s7, 2       
     la $t2, array_y
     add $t3, $t2, $t1
-    lwc1 $f12, 0($t3)       # nạp y[i] vào $f12
+    lwc1 $f12, 0($t3)    
     
     # 1. LÀM TRÒN
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    jal round_to_one_decimal # $f12 bây giờ đã được làm tròn
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-    
-    # 2. CHUYỂN SANG STRING
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    la $a0, string_buffer     # a0 = địa chỉ bộ đệm
-    # $f12 đã chứa float
-    jal float_to_string       # Chuyển $f12 -> chuỗi tại string_buffer
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-
-    # 3. LẤY ĐỘ DÀI CHUỖI
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)
-    la $a0, string_buffer
-    jal get_string_length     # Trả về độ dài trong $v0
-    move $t1, $v0             # t1 = độ dài chuỗi
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4
-
-    # 4. GHI CHUỖI (syscall 15)
-    li $v0, 15
-    move $a0, $s0
-    la $a1, string_buffer
-    move $a2, $t1             # Ghi đúng $t1 byte
-    syscall
-
-    # 5. GHI DẤU CÁCH
-    li $v0, 15
-    move $a0, $s0
-    la $a1, space
-    li $a2, 1
-    syscall
-    
-    # (Xóa phần khôi phục $t0 cũ)
-    
-    addi $s7, $s7, 1        # *** SỬA LỖI: Tăng $s7 (thay vì $t0) ***
-    j file_yloop
-file_print_done:
-
-    # Ghi newline
-    li $v0, 15
-    move $a0, $s0
-    la $a1, newline
-    li $a2, 1
-    syscall
-    
-    # Ghi "MMSE: "
-    li $v0, 15
-    move $a0, $s0
-    la $a1, print_mmse
-    li $a2, 6
-    syscall
-
-    # Ghi giá trị MMSE (đã lưu trong $f16)
-    mov.s $f12, $f16
-    
-    # 1. LÀM TRÒN MMSE
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal round_to_one_decimal
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-    # 2. CHUYỂN MMSE SANG STRING
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $a0, string_buffer     
+
+    jal float_to_string       
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $a0, string_buffer
+    jal get_string_length     
+    move $t1, $v0             
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+
+    li $v0, 15
+    move $a0, $s0
+    la $a1, string_buffer
+    move $a2, $t1            
+    syscall
+
+    li $v0, 15
+    move $a0, $s0
+    la $a1, space
+    li $a2, 1
+    syscall
+    
+    addi $s7, $s7, 1      
+    j file_yloop
+file_print_done:
+
+    li $v0, 15
+    move $a0, $s0
+    la $a1, newline
+    li $a2, 1
+    syscall
+
+    li $v0, 15
+    move $a0, $s0
+    la $a1, print_mmse
+    li $a2, 6
+    syscall
+
+    mov.s $f12, $f16
+    
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal round_to_one_decimal
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     la $a0, string_buffer
@@ -879,7 +801,6 @@ file_print_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
 
-    # 3. LẤY ĐỘ DÀI
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     la $a0, string_buffer
@@ -888,90 +809,73 @@ file_print_done:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
 
-    # 4. GHI MMSE (syscall 15)
     li $v0, 15
     move $a0, $s0
     la $a1, string_buffer
     move $a2, $t1
     syscall
 
-    # Ghi newline
     li $v0, 15
     move $a0, $s0
     la $a1, newline
     li $a2, 1
     syscall
 
-    # Đóng file
     li $v0, 16
     move $a0, $s0
     syscall
 
-    lw $s7, 0($sp)          # *** KHÔI PHỤC $s7 ***
+    lw $s7, 0($sp)         
     lw $ra, 4($sp)
     addi $sp, $sp, 8
     jr $ra
 
-#-------------------------------------------------
-# float_to_string:
-#   Chuyển đổi số float trong $f12 thành chuỗi ASCII 
-#   tại địa chỉ trong $a0.
-#   (Đã sửa đổi để chỉ in 1 chữ số thập phân)
-#-------------------------------------------------
 float_to_string:
-    addi $sp, $sp, -8       # *** SỬA LỖI: Cấp phát 8 byte ***
-    sw $ra, 4($sp)          # Lưu $ra
-    sw $s7, 0($sp)          # *** SỬA LỖI: Lưu $s7 ***
+    addi $sp, $sp, -8      
+    sw $ra, 4($sp)          
+    sw $s7, 0($sp)          
     
-    move $s7, $a0           # $s7 = con trỏ bộ đệm (dùng s-reg)
-    l.s $f0, const_zero     # $f0 = 0.0
+    move $s7, $a0          
+    l.s $f0, const_zero     
     
-    # --- Bước 1: Xử lý dấu (Sign) ---
-    c.lt.s $f12, $f0        # if (f12 < 0.0)?
-    bc1f ftos_check_integer_part # Nếu (f12 >= 0.0), bỏ qua phần xử lý âm
+    c.lt.s $f12, $f0       
+    bc1f ftos_check_integer_part
 
-    # (Nếu âm)
-    # Nối chuỗi "-" vào bộ đệm (tại $s7)
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     la $a0, str_minus
     li $a1, 1
-    move $a2, $s7           # $a2 = con trỏ bộ đệm
+    move $a2, $s7         
     jal append_string
-    move $s7, $v0           # $v0 chứa con trỏ mới
+    move $s7, $v0           
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-    abs.s $f12, $f12        # f12 = abs(f12)
+    abs.s $f12, $f12        
     
 ftos_check_integer_part:
-    # --- Bước 2: Lấy phần nguyên (Integer Part) ---
-    trunc.w.s $f1, $f12     # $f1 = (int)f12 (làm tròn về 0)
+    trunc.w.s $f1, $f12    
     
-    # --- Bước 3: Chuyển phần nguyên sang ASCII ---
-    mfc1 $a0, $f1           # $a0 = (int)f12
-    move $a1, $s7           # $a1 = con trỏ bộ đệm
+    mfc1 $a0, $f1           
+    move $a1, $s7           
     
-    bnez $a0, ftos_int_is_not_zero # if (int_part != 0), nhảy
+    bnez $a0, ftos_int_is_not_zero 
     
-    # (Nếu phần nguyên là 0)
     la $t0, str_zero
     lb $t1, 0($t0)
     sb $t1, 0($s7)
     addi $s7, $s7, 1
-    j ftos_write_decimal_point     # Nhảy đến bước 4
+    j ftos_write_decimal_point    
     
 ftos_int_is_not_zero:
-    # (Nếu không phải 0)
     addi $sp, $sp, -4
     sw $ra, 0($sp)
-    jal int_to_string_recursive # Chuyển int ($a0) thành chuỗi tại ($a1)
-    move $s7, $v0           # $v0 chứa con trỏ bộ đệm mới
+    jal int_to_string_recursive 
+    move $s7, $v0          
     lw $ra, 0($sp)
     addi $sp, $sp, 4
 
 ftos_write_decimal_point:
-    # --- Bước 4: Ghi dấu chấm thập phân ---
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     la $a0, str_dot
@@ -982,28 +886,23 @@ ftos_write_decimal_point:
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-    # --- Bước 5: Lấy phần thập phân (Fractional Part) ---
-    cvt.s.w $f1, $f1        # $f1 = (float)f1 (ví dụ: 123.0)
-    sub.s $f12, $f12, $f1   # f12 = f12 - f1 (ví dụ: 123.456 - 123.0 = 0.456)
+    cvt.s.w $f1, $f1       
+    sub.s $f12, $f12, $f1  
 
-    # --- Bước 6: Chuyển phần thập phân sang ASCII ---
-    l.s $f10, const_ten     # $f10 = 10.0
-    li $t0, 1               # *** Chỉ 1 chữ số thập phân (khớp với round_to_one_decimal) ***
+    l.s $f10, const_ten     
+    li $t0, 1              
 
 ftos_loop_frac:
     beq $t0, $zero, ftos_end_loop_frac
     
-    # Lấy chữ số tiếp theo
     mul.s $f12, $f12, $f10  # f12 *= 10.0
     trunc.w.s $f1, $f12
     mfc1 $t1, $f1
-    
-    # Ghi chữ số vào bộ đệm
+
     addi $t1, $t1, 48
     sb $t1, 0($s7)
     addi $s7, $s7, 1
-    
-    # Trừ phần nguyên
+
     cvt.s.w $f1, $f1
     sub.s $f12, $f12, $f1
     
@@ -1011,85 +910,72 @@ ftos_loop_frac:
     j ftos_loop_frac
 
 ftos_end_loop_frac:
-    
-    # --- Bước 7: Kết thúc chuỗi (Null-terminate) ---
+
     sb $zero, 0($s7)
     
-    lw $s7, 0($sp)          # *** SỬA LỖI: Khôi phục $s7 ***
+    lw $s7, 0($sp)          
     lw $ra, 4($sp)
-    addi $sp, $sp, 8        # *** SỬA LỖI: Giải phóng 8 byte ***
+    addi $sp, $sp, 8        
     jr $ra
 
-#-------------------------------------------------
-# int_to_string_recursive:
-#   Hàm đệ quy để chuyển int ($a0) thành chuỗi tại ($a1)
-#-------------------------------------------------
 int_to_string_recursive:
     addi $sp, $sp, -8
     sw $ra, 4($sp)
-    sw $a0, 0($sp)          # Lưu số N
+    sw $a0, 0($sp)          
     
     li $t0, 10
-    div $a0, $t0            # N / 10
-    mflo $a0                # $a0 = N / 10 (quotient)
+    div $a0, $t0            
+    mflo $a0                
     
-    bnez $a0, itos_recursive_call    # if ( (N/10) != 0) gọi đệ quy
+    bnez $a0, itos_recursive_call    
     
-    # (Trường hợp cơ sở: N < 10)
-    lw $a0, 0($sp)          # Lấy lại N
-    j itos_process_remainder     # Nhảy thẳng đến phần xử lý số dư
     
-itos_recursive_call:  # (Nếu N >= 10)
+    lw $a0, 0($sp)          
+    j itos_process_remainder     
+    
+itos_recursive_call:  
     jal int_to_string_recursive
-    move $a1, $v0           # Cập nhật con trỏ bộ đệm từ lệnh gọi trước
-    lw $a0, 0($sp)          # Lấy lại N
+    move $a1, $v0           
+    lw $a0, 0($sp)          
     
 itos_process_remainder:
-    # (Phần sau đệ quy)
     li $t0, 10
     div $a0, $t0
-    mfhi $t1                # $t1 = N % 10 (remainder)
+    mfhi $t1                
     
-    addi $t1, $t1, 48       # Chuyển số dư sang ASCII
-    sb $t1, 0($a1)          # Ghi vào bộ đệm
-    addi $v0, $a1, 1        # $v0 = con trỏ bộ đệm mới
+    addi $t1, $t1, 48       
+    sb $t1, 0($a1)          
+    addi $v0, $a1, 1        
     
     lw $ra, 4($sp)
     addi $sp, $sp, 8
     jr $ra
 
-#-------------------------------------------------
-# append_string:
-#   Hàm tiện ích để nối một chuỗi ($a0) vào bộ đệm ($a2)
-#-------------------------------------------------
 append_string:
-    # $a0 = chuỗi nguồn, $a1 = độ dài, $a2 = con trỏ đích ($s0)
     move $t0, $zero
+
 loop_append:
-    beq $t0, $a1, end_append # $a1 là độ dài
+    beq $t0, $a1, end_append 
     lbu $t1, 0($a0)
     sb $t1, 0($a2)
     addi $a0, $a0, 1
     addi $a2, $a2, 1
     addi $t0, $t0, 1
     j loop_append
+
 end_append:
-    move $v0, $a2           # Trả về con trỏ đích MỚI
+    move $v0, $a2           
     jr $ra
 
-#-------------------------------------------------
-# get_string_length:
-#   Tính độ dài của chuỗi null-terminated
-#   Input: $a0 = con trỏ chuỗi
-#   Output: $v0 = độ dài
-#-------------------------------------------------
 get_string_length:
-    li $v0, 0               # v0 = độ dài
+    li $v0, 0              
+    
 strlen_loop:
     lb $t0, 0($a0)
     beqz $t0, strlen_done
     addi $a0, $a0, 1
     addi $v0, $v0, 1
     j strlen_loop
+
 strlen_done:
     jr $ra

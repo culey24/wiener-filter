@@ -2,9 +2,9 @@
 # Assembler: MARS / SPIM
 
 .data
-filename_input:   .asciiz "input/tc_1_input_1.txt"   
-filename_desired: .asciiz "desired/tc_1_desired.txt"  
-filename_output:  .asciiz "output/tc_1_output_1.txt"    
+filename_input:   .asciiz "input/tc_0_input_1.txt"   
+filename_desired: .asciiz "desired/tc_0_desired.txt"  
+filename_output:  .asciiz "output.txt"    
 .align 2
 buffer:     .space 4000
 

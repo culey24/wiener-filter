@@ -9,19 +9,19 @@ filename_output:  .asciiz "output.txt"
 buffer:     .space 4000
 
 # storage for up to 500 samples
-array_x:    .space 2000     # 500 * 4
-array_d:    .space 2000
-array_y:    .space 2000
-array_y_str: .space 2000
+input_signal:    .space 2000     # 500 * 4
+desired_signal:    .space 2000
+output_signal:    .space 2000
+output_signal_str: .space 2000
 
 # parameters
 maxSamples: .word 500
-M_const:    .word 2         
+M_const:    .word 3      
 
 # working/algorithm arrays 
 Rxx:        .space 64
 Rdx:        .space 64
-w:          .space 64
+optimize_coefficient:          .space 64
 Rmat:       .space 1024
 Raug:       .space 2048
 
@@ -40,6 +40,8 @@ str_minus:       .asciiz "-"
 str_dot:         .asciiz "."
 str_zero:        .asciiz "0"
 
+# MMSE variable save
+mmse: .float 0.0
 
 .text
 .globl main
@@ -82,7 +84,7 @@ read_input_file:
     syscall
 
     la $s1, buffer      
-    la $s2, array_x    
+    la $s2, input_signal    
     li $t1, 0          
     
     # parse_loop_new call
@@ -119,7 +121,7 @@ read_desired_file:
     syscall
 
     la $s1, buffer     
-    la $s3, array_d    
+    la $s3, desired_signal    
     li $t1, 0          
 
     # parse_loop_new call
@@ -298,9 +300,9 @@ parse_done:
     la $t0, M_const
     lw $s6, 0($t0)      # s6 = M
     
-    la $s2, array_x
-    la $s3, array_d
-    la $s4, array_y
+    la $s2, input_signal
+    la $s3, desired_signal
+    la $s4, output_signal
 
     li $t7, 0           # k = 0
 
@@ -340,8 +342,7 @@ n_loop2:
     j n_loop2
 n_done2:
     # denom = N - k
-    sub $t4, $s5, $t7
-    mtc1 $t4, $f14
+    mtc1 $s5, $f14          
     cvt.s.w $f14, $f14
 
     div.s $f24, $f20, $f14  # Rxx[k]
@@ -527,9 +528,9 @@ backsub_inner:
     add $t5, $t4, $t3
     lwc1 $f17, 0($t5)     # f17 = $f_rij
 
-    # w[j]
+    # optimize_coefficient[j]
     sll $t6, $t1, 2
-    la $t7, w
+    la $t7, optimize_coefficient
     add $t9, $t7, $t6
     lwc1 $f18, 0($t9)     # f18 = $f_wj
 
@@ -549,7 +550,7 @@ compute_rhs2:
 
     sub.s $f21, $f20, $f16  # f21 = $f_wi
     sll $t6, $t0, 2
-    la $t7, w
+    la $t7, optimize_coefficient
     add $t9, $t7, $t6
     swc1 $f21, 0($t9)
 
@@ -566,15 +567,15 @@ k_for_y:
     bge $t1, $s6, after_k_for_y
     sub $t2, $t0, $t1     # n-k
     bltz $t2, skip_k_y
-    # w[k]
+    # optimize_coefficient[k]
     sll $t3, $t1, 2
-    la $t4, w
+    la $t4, optimize_coefficient
     add $t5, $t4, $t3
     lwc1 $f17, 0($t5)     # f17 = $f_wk
 
     # x[n-k]
     sll $t6, $t2, 2
-    la $t7, array_x
+    la $t7, input_signal
     add $t8, $t7, $t6
     lwc1 $f18, 0($t8)     # f18 = $f_x
 
@@ -585,7 +586,7 @@ skip_k_y:
     j k_for_y
 after_k_for_y:
     sll $t9, $t0, 2
-    la $t3, array_y
+    la $t3, output_signal
     add $t4, $t3, $t9
     swc1 $f16, 0($t4)
 
@@ -599,12 +600,12 @@ mmse_loop2:
     bge $t0, $s5, mmse_done2
     sll $t1, $t0, 2
     # d[n]
-    la $t2, array_d
+    la $t2, desired_signal
     add $t3, $t2, $t1
     lwc1 $f17, 0($t3)     # f17 = $f_dn
 
     # y[n]
-    la $t4, array_y
+    la $t4, output_signal
     add $t5, $t4, $t1
     lwc1 $f18, 0($t5)     # f18 = $f_yn
 
@@ -619,6 +620,10 @@ mmse_done2:
     cvt.s.w $f20, $f20
     div.s $f16, $f16, $f20  # f16 = $f_mmse
 
+    # save mmse
+    la $t0, mmse
+    swc1 $f16, 0($t0)
+
     # print y[]
     la $a0, print_output
     li $v0, 4
@@ -628,7 +633,7 @@ mmse_done2:
 print_yloop:
     bge $t0, $s5, print_done
     sll $t1, $t0, 2
-    la $t2, array_y
+    la $t2, output_signal
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     
@@ -731,7 +736,7 @@ file_yloop:
     bge $s7, $s5, file_print_done # i >= N (s5=N)
 
     sll $t1, $s7, 2       
-    la $t2, array_y
+    la $t2, output_signal
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)    
     

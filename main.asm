@@ -25,6 +25,11 @@ output_signal:    .space 2000
 output_signal_str: .space 2000
 
 # =========================================================================
+# Storing MMSE
+# =========================================================================
+mmse: .float 0.0      
+
+# =========================================================================
 # ALGORITHM PARAMETERS
 # =========================================================================
 maxSamples: .word 500
@@ -686,6 +691,8 @@ finish_mmse_empirical:
     div.s $f16, $f16, $f20  # MMSE = Sum / N
     
     # $f16 now holds the correct MMSE (approx 2.5) to be printed in Section 7
+    la $t0, mmse
+    swc1 $f16, 0($t0)
     # ---------------------------------------------------------------------
     # SECTION 7: PRINT RESULTS (CONSOLE)
     # Loop through Y array, round values, and print.

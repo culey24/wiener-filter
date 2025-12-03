@@ -15,14 +15,14 @@ buffer:     .space 4000     # Buffer to hold text read from files
 # =========================================================================
 # SIGNAL ARRAYS
 # =========================================================================
-# array_x: Input signal x(n) (Noisy signal)
-# array_d: Desired signal d(n) (Reference signal)
-# array_y: Filtered output y(n)
+# input_signal: Input signal x(n) (Noisy signal)
+# desired_signal: Desired signal d(n) (Reference signal)
+# output_signal: Filtered output y(n)
 # =========================================================================
-array_x:    .space 2000     # Max 500 floats
-array_d:    .space 2000
-array_y:    .space 2000
-array_y_str: .space 2000
+input_signal:    .space 2000     # Max 500 floats
+desired_signal:    .space 2000
+output_signal:    .space 2000
+output_signal_str: .space 2000
 
 # =========================================================================
 # ALGORITHM PARAMETERS
@@ -35,13 +35,13 @@ M_const:    .word 10        # Filter Length (Order). CRITICAL: Must match signal
 # =========================================================================
 # Rxx:  Auto-correlation vector of input x
 # Rdx:  Cross-correlation vector between d and x
-# w:    The optimal filter weights (what we are solving for)
+# optimize_coefficient:    The optimal filter weights (what we are solving for)
 # Rmat: The Toeplitz Matrix (System Matrix)
 # Raug: Augmented Matrix [Rmat | Rdx] for Gaussian Elimination
 # =========================================================================
 Rxx:        .space 64
 Rdx:        .space 64
-w:          .space 64
+optimize_coefficient:          .space 64
 Rmat:       .space 1024
 Raug:       .space 2048
 
@@ -68,8 +68,8 @@ str_zero:        .asciiz "0"
         .globl main
 # =========================================================================
 # MAIN ROUTINE
-# 1. Reads input.txt -> array_x
-# 2. Reads desired.txt -> array_d
+# 1. Reads input.txt -> input_signal
+# 2. Reads desired.txt -> desired_signal
 # 3. Checks if sizes match.
 # 4. Jumps to the processing logic.
 # =========================================================================
@@ -95,7 +95,7 @@ main:
 # and then parse that text into floating point numbers.
 # =========================================================================
 
-# Reads "input.txt" and parses floats into array_x
+# Reads "input.txt" and parses floats into input_signal
 read_input_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -121,7 +121,7 @@ read_input_file:
 
     # Parse Content
     la $s1, buffer
-    la $s2, array_x
+    la $s2, input_signal
     li $t1, 0
     
     move $a0, $s1
@@ -133,7 +133,7 @@ read_input_file:
     addi $sp, $sp, 4
     jr $ra
 
-# Reads "desired.txt" and parses floats into array_d
+# Reads "desired.txt" and parses floats into desired_signal
 read_desired_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -155,7 +155,7 @@ read_desired_file:
     syscall
 
     la $s1, buffer
-    la $s3, array_d
+    la $s3, desired_signal
     li $t1, 0
 
     move $a0, $s1
@@ -319,9 +319,9 @@ parse_done:
     la $t0, M_const
     lw $s6, 0($t0)      # Load Filter Length M (10)
     
-    la $s2, array_x
-    la $s3, array_d
-    la $s4, array_y
+    la $s2, input_signal
+    la $s3, desired_signal
+    la $s4, output_signal
 
     # ---------------------------------------------------------------------
     # SECTION 1: COMPUTE CORRELATION VECTORS
@@ -390,7 +390,7 @@ k_done:
 
     # ---------------------------------------------------------------------
     # SECTION 2: CONSTRUCT TOEPLITZ & AUGMENTED MATRIX
-    # The Wiener-Hopf equation is Rxx * w = Rdx.
+    # The Wiener-Hopf equation is Rxx * optimize_coefficient = Rdx.
     # We build the Toeplitz matrix Rmat where Rmat[i,j] = Rxx[|i-j|].
     # We then create Raug = [Rmat | Rdx] to solve using Gaussian Elimination.
     # ---------------------------------------------------------------------
@@ -477,7 +477,7 @@ copy_done:
 
     # ---------------------------------------------------------------------
     # SECTION 3: GAUSSIAN ELIMINATION (FORWARD ELIMINATION)
-    # Transform Raug into Row Echelon Form to prepare for solving w.
+    # Transform Raug into Row Echelon Form to prepare for solving optimize_coefficient.
     # ---------------------------------------------------------------------
     addi $t8, $s6, 1      # Width of Raug (M+1)
     li $t0, 0           # Pivot row i
@@ -555,7 +555,7 @@ elim_done:
 
     # ---------------------------------------------------------------------
     # SECTION 4: BACK SUBSTITUTION
-    # Solve for weights 'w' starting from the bottom row up.
+    # Solve for weights 'optimize_coefficient' starting from the bottom row up.
     # ---------------------------------------------------------------------
     add $t0, $s6, $zero
     addi $t0, $t0, -1     # Start at last row (M-1)
@@ -564,7 +564,7 @@ backsub_outer:
     l.s $f16, const_zero
     addi $t1, $t0, 1      # Column j = i+1
     
-    # Sum known values (w[j] * coeff)
+    # Sum known values (optimize_coefficient[j] * coeff)
 backsub_inner:
     bge $t1, $s6, compute_rhs2
     mul $t2, $t0, $t8
@@ -575,7 +575,7 @@ backsub_inner:
     lwc1 $f17, 0($t5)
 
     sll $t6, $t1, 2
-    la $t7, w
+    la $t7, optimize_coefficient
     add $t9, $t7, $t6
     lwc1 $f18, 0($t9)
 
@@ -585,7 +585,7 @@ backsub_inner:
     addi $t1, $t1, 1
     j backsub_inner
 compute_rhs2:
-    # w[i] = RHS - Sum
+    # optimize_coefficient[i] = RHS - Sum
     mul $t2, $t0, $t8
     add $t2, $t2, $s6
     sll $t3, $t2, 2
@@ -595,9 +595,9 @@ compute_rhs2:
 
     sub.s $f21, $f20, $f16
     sll $t6, $t0, 2
-    la $t7, w
+    la $t7, optimize_coefficient
     add $t9, $t7, $t6
-    swc1 $f21, 0($t9)     # Store optimal weight w[i]
+    swc1 $f21, 0($t9)     # Store optimal weight optimize_coefficient[i]
 
     addi $t0, $t0, -1
     j backsub_outer
@@ -605,7 +605,7 @@ backsub_done:
 
     # ---------------------------------------------------------------------
     # SECTION 5: APPLY FILTER (COMPUTE Y)
-    # y[n] = sum(w[k] * x[n-k]) for k=0 to M-1
+    # y[n] = sum(optimize_coefficient[k] * x[n-k]) for k=0 to M-1
     # ---------------------------------------------------------------------
     li $t0, 0           # n = 0
 y_compute:
@@ -617,15 +617,15 @@ k_for_y:
     sub $t2, $t0, $t1     # Index: n - k
     bltz $t2, skip_k_y    # Skip if index < 0 (assumes x[<0] = 0)
     
-    # Load w[k]
+    # Load optimize_coefficient[k]
     sll $t3, $t1, 2
-    la $t4, w
+    la $t4, optimize_coefficient
     add $t5, $t4, $t3
     lwc1 $f17, 0($t5)
 
     # Load x[n-k]
     sll $t6, $t2, 2
-    la $t7, array_x
+    la $t7, input_signal
     add $t8, $t7, $t6
     lwc1 $f18, 0($t8)
 
@@ -638,7 +638,7 @@ skip_k_y:
 after_k_for_y:
     # Store result y[n]
     sll $t9, $t0, 2
-    la $t3, array_y
+    la $t3, output_signal
     add $t4, $t3, $t9
     swc1 $f16, 0($t4)
 
@@ -660,12 +660,12 @@ calc_mmse_empirical:
 
     # 1. Load Desired d[n]
     sll $t1, $t0, 2
-    la $t2, array_d
+    la $t2, desired_signal
     add $t3, $t2, $t1
     lwc1 $f4, 0($t3)
 
     # 2. Load Output y[n]
-    la $t2, array_y         # y is already calculated in Section 5
+    la $t2, output_signal         # y is already calculated in Section 5
     add $t3, $t2, $t1
     lwc1 $f6, 0($t3)
 
@@ -698,7 +698,7 @@ finish_mmse_empirical:
 print_yloop:
     bge $t0, $s5, print_done
     sll $t1, $t0, 2
-    la $t2, array_y
+    la $t2, output_signal
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     
@@ -801,7 +801,7 @@ file_yloop:
     bge $s7, $s5, file_print_done
     
     sll $t1, $s7, 2
-    la $t2, array_y
+    la $t2, output_signal
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     

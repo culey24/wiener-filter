@@ -6,8 +6,8 @@
 # =========================================================================
 # DATA SECTION: File names and buffers
 # =========================================================================
-filename_input:   .asciiz "input/tc_0_input_3.txt"
-filename_desired: .asciiz "desired/tc_0_desired.txt"
+filename_input:   .asciiz "input.txt"
+filename_desired: .asciiz "desired.txt"
 filename_output:  .asciiz "output.txt"
 .align 2
 buffer:     .space 4000     # Buffer to hold text read from files

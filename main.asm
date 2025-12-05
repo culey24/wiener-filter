@@ -1,12 +1,12 @@
 # Wiener filter - MARS compatible
-# 
+#
 # Assembler: MARS / SPIM
 
-.data
+        .data
 # =========================================================================
 # DATA SECTION: File names and buffers
 # =========================================================================
-filename_input:   .asciiz "input/tc_0_input_5.txt"
+filename_input:   .asciiz "input/tc_0_input_3.txt"
 filename_desired: .asciiz "desired/tc_0_desired.txt"
 filename_output:  .asciiz "output.txt"
 .align 2
@@ -15,19 +15,14 @@ buffer:     .space 4000     # Buffer to hold text read from files
 # =========================================================================
 # SIGNAL ARRAYS
 # =========================================================================
-# input_signal: Input signal x(n) (Noisy signal)
-# desired_signal: Desired signal d(n) (Reference signal)
-# output_signal: Filtered output y(n)
+# array_x: Input signal x(n) (Noisy signal)
+# array_d: Desired signal d(n) (Reference signal)
+# array_y: Filtered output y(n)
 # =========================================================================
-input_signal:    .space 2000     # Max 500 floats
-desired_signal:    .space 2000
-output_signal:    .space 2000
-output_signal_str: .space 2000
-
-# =========================================================================
-# Storing MMSE
-# =========================================================================
-mmse: .float 0.0      
+array_x:    .space 2000     # Max 500 floats
+array_d:    .space 2000
+array_y:    .space 2000
+array_y_str: .space 2000
 
 # =========================================================================
 # ALGORITHM PARAMETERS
@@ -40,13 +35,13 @@ M_const:    .word 10        # Filter Length (Order). CRITICAL: Must match signal
 # =========================================================================
 # Rxx:  Auto-correlation vector of input x
 # Rdx:  Cross-correlation vector between d and x
-# optimize_coefficient:    The optimal filter weights (what we are solving for)
+# w:    The optimal filter weights (what we are solving for)
 # Rmat: The Toeplitz Matrix (System Matrix)
 # Raug: Augmented Matrix [Rmat | Rdx] for Gaussian Elimination
 # =========================================================================
 Rxx:        .space 64
 Rdx:        .space 64
-optimize_coefficient:          .space 64
+w:          .space 64
 Rmat:       .space 1024
 Raug:       .space 2048
 
@@ -73,8 +68,8 @@ str_zero:        .asciiz "0"
         .globl main
 # =========================================================================
 # MAIN ROUTINE
-# 1. Reads input.txt -> input_signal
-# 2. Reads desired.txt -> desired_signal
+# 1. Reads input.txt -> array_x
+# 2. Reads desired.txt -> array_d
 # 3. Checks if sizes match.
 # 4. Jumps to the processing logic.
 # =========================================================================
@@ -100,7 +95,7 @@ main:
 # and then parse that text into floating point numbers.
 # =========================================================================
 
-# Reads "input.txt" and parses floats into input_signal
+# Reads "input.txt" and parses floats into array_x
 read_input_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -126,7 +121,7 @@ read_input_file:
 
     # Parse Content
     la $s1, buffer
-    la $s2, input_signal
+    la $s2, array_x
     li $t1, 0
     
     move $a0, $s1
@@ -138,7 +133,7 @@ read_input_file:
     addi $sp, $sp, 4
     jr $ra
 
-# Reads "desired.txt" and parses floats into desired_signal
+# Reads "desired.txt" and parses floats into array_d
 read_desired_file:
     addi $sp, $sp, -4
     sw $ra, 0($sp)
@@ -160,7 +155,7 @@ read_desired_file:
     syscall
 
     la $s1, buffer
-    la $s3, desired_signal
+    la $s3, array_d
     li $t1, 0
 
     move $a0, $s1
@@ -324,9 +319,9 @@ parse_done:
     la $t0, M_const
     lw $s6, 0($t0)      # Load Filter Length M (10)
     
-    la $s2, input_signal
-    la $s3, desired_signal
-    la $s4, output_signal
+    la $s2, array_x
+    la $s3, array_d
+    la $s4, array_y
 
     # ---------------------------------------------------------------------
     # SECTION 1: COMPUTE CORRELATION VECTORS
@@ -395,7 +390,7 @@ k_done:
 
     # ---------------------------------------------------------------------
     # SECTION 2: CONSTRUCT TOEPLITZ & AUGMENTED MATRIX
-    # The Wiener-Hopf equation is Rxx * optimize_coefficient = Rdx.
+    # The Wiener-Hopf equation is Rxx * w = Rdx.
     # We build the Toeplitz matrix Rmat where Rmat[i,j] = Rxx[|i-j|].
     # We then create Raug = [Rmat | Rdx] to solve using Gaussian Elimination.
     # ---------------------------------------------------------------------
@@ -482,7 +477,7 @@ copy_done:
 
     # ---------------------------------------------------------------------
     # SECTION 3: GAUSSIAN ELIMINATION (FORWARD ELIMINATION)
-    # Transform Raug into Row Echelon Form to prepare for solving optimize_coefficient.
+    # Transform Raug into Row Echelon Form to prepare for solving w.
     # ---------------------------------------------------------------------
     addi $t8, $s6, 1      # Width of Raug (M+1)
     li $t0, 0           # Pivot row i
@@ -560,7 +555,7 @@ elim_done:
 
     # ---------------------------------------------------------------------
     # SECTION 4: BACK SUBSTITUTION
-    # Solve for weights 'optimize_coefficient' starting from the bottom row up.
+    # Solve for weights 'w' starting from the bottom row up.
     # ---------------------------------------------------------------------
     add $t0, $s6, $zero
     addi $t0, $t0, -1     # Start at last row (M-1)
@@ -569,7 +564,7 @@ backsub_outer:
     l.s $f16, const_zero
     addi $t1, $t0, 1      # Column j = i+1
     
-    # Sum known values (optimize_coefficient[j] * coeff)
+    # Sum known values (w[j] * coeff)
 backsub_inner:
     bge $t1, $s6, compute_rhs2
     mul $t2, $t0, $t8
@@ -580,7 +575,7 @@ backsub_inner:
     lwc1 $f17, 0($t5)
 
     sll $t6, $t1, 2
-    la $t7, optimize_coefficient
+    la $t7, w
     add $t9, $t7, $t6
     lwc1 $f18, 0($t9)
 
@@ -590,7 +585,7 @@ backsub_inner:
     addi $t1, $t1, 1
     j backsub_inner
 compute_rhs2:
-    # optimize_coefficient[i] = RHS - Sum
+    # w[i] = RHS - Sum
     mul $t2, $t0, $t8
     add $t2, $t2, $s6
     sll $t3, $t2, 2
@@ -600,9 +595,9 @@ compute_rhs2:
 
     sub.s $f21, $f20, $f16
     sll $t6, $t0, 2
-    la $t7, optimize_coefficient
+    la $t7, w
     add $t9, $t7, $t6
-    swc1 $f21, 0($t9)     # Store optimal weight optimize_coefficient[i]
+    swc1 $f21, 0($t9)     # Store optimal weight w[i]
 
     addi $t0, $t0, -1
     j backsub_outer
@@ -610,7 +605,7 @@ backsub_done:
 
     # ---------------------------------------------------------------------
     # SECTION 5: APPLY FILTER (COMPUTE Y)
-    # y[n] = sum(optimize_coefficient[k] * x[n-k]) for k=0 to M-1
+    # y[n] = sum(w[k] * x[n-k]) for k=0 to M-1
     # ---------------------------------------------------------------------
     li $t0, 0           # n = 0
 y_compute:
@@ -622,15 +617,15 @@ k_for_y:
     sub $t2, $t0, $t1     # Index: n - k
     bltz $t2, skip_k_y    # Skip if index < 0 (assumes x[<0] = 0)
     
-    # Load optimize_coefficient[k]
+    # Load w[k]
     sll $t3, $t1, 2
-    la $t4, optimize_coefficient
+    la $t4, w
     add $t5, $t4, $t3
     lwc1 $f17, 0($t5)
 
     # Load x[n-k]
     sll $t6, $t2, 2
-    la $t7, input_signal
+    la $t7, array_x
     add $t8, $t7, $t6
     lwc1 $f18, 0($t8)
 
@@ -643,7 +638,7 @@ skip_k_y:
 after_k_for_y:
     # Store result y[n]
     sll $t9, $t0, 2
-    la $t3, output_signal
+    la $t3, array_y
     add $t4, $t3, $t9
     swc1 $f16, 0($t4)
 
@@ -665,12 +660,12 @@ calc_mmse_empirical:
 
     # 1. Load Desired d[n]
     sll $t1, $t0, 2
-    la $t2, desired_signal
+    la $t2, array_d
     add $t3, $t2, $t1
     lwc1 $f4, 0($t3)
 
     # 2. Load Output y[n]
-    la $t2, output_signal         # y is already calculated in Section 5
+    la $t2, array_y         # y is already calculated in Section 5
     add $t3, $t2, $t1
     lwc1 $f6, 0($t3)
 
@@ -690,39 +685,52 @@ finish_mmse_empirical:
     cvt.s.w $f20, $f20      # Convert N to float
     div.s $f16, $f16, $f20  # MMSE = Sum / N
     
-    # $f16 now holds the correct MMSE (approx 2.5) to be printed in Section 7
-    la $t0, mmse
-    swc1 $f16, 0($t0)
-    # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
     # SECTION 7: PRINT RESULTS (CONSOLE)
-    # Loop through Y array, round values, and print.
+    # FIXED: Changed loop counter from $t0 to $s1.
+    # $t0 was getting overwritten by float_to_string, causing the infinite loop.
     # ---------------------------------------------------------------------
     la $a0, print_output
     li $v0, 4
     syscall
 
-    li $t0, 0
+    li $s1, 0               # CHANGE: Use $s1 as loop counter (n) instead of $t0
 print_yloop:
-    bge $t0, $s5, print_done
-    sll $t1, $t0, 2
-    la $t2, output_signal
+    bge $s1, $s5, print_done
+    
+    sll $t1, $s1, 2
+    la $t2, array_y
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     
-    # Rounding call
+    # 1. Round
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal round_to_one_decimal
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-    li $v0, 2
+    # 2. Convert to String
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $a0, string_buffer
+    jal float_to_string
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+
+    # 3. Print String
+    la $a0, string_buffer
+    li $v0, 4
     syscall
+    
+    # Print Space
     la $a0, space
     li $v0, 4
     syscall
-    addi $t0, $t0, 1
+    
+    addi $s1, $s1, 1        # CHANGE: Increment $s1
     j print_yloop
+
 print_done:
     la $a0, newline
     li $v0, 4
@@ -734,15 +742,26 @@ print_done:
 
     mov.s $f12, $f16      # Move MMSE to print register
     
-    # Round MMSE
+    # 1. Round MMSE
     addi $sp, $sp, -4
     sw $ra, 0($sp)
     jal round_to_one_decimal
     lw $ra, 0($sp)
     addi $sp, $sp, 4
     
-    li $v0, 2
+    # 2. Convert MMSE to String
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    la $a0, string_buffer
+    jal float_to_string
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+
+    # 3. Print MMSE String
+    la $a0, string_buffer
+    li $v0, 4
     syscall
+
     la $a0, newline
     li $v0, 4
     syscall
@@ -750,7 +769,7 @@ print_done:
     # ---------------------------------------------------------------------
     # SECTION 8: WRITE TO FILE (output.txt)
     # ---------------------------------------------------------------------
-    jal print_to_file
+    #jal print_to_file
 
 exit_prog:
     li $v0, 10
@@ -808,7 +827,7 @@ file_yloop:
     bge $s7, $s5, file_print_done
     
     sll $t1, $s7, 2
-    la $t2, output_signal
+    la $t2, array_y
     add $t3, $t2, $t1
     lwc1 $f12, 0($t3)
     
@@ -911,6 +930,9 @@ file_print_done:
     jr $ra
 
 # Converts Float ($f12) to ASCII string at ($a0)
+# Converts Float ($f12) to ASCII string at ($a0)
+# MODIFIED: Rounds to 1 decimal place logic (via loop=1) 
+# and explicitly pads "000" at the end.
 float_to_string:
     addi $sp, $sp, -8
     sw $ra, 4($sp)
@@ -974,16 +996,18 @@ ftos_write_decimal_point:
     sub.s $f12, $f12, $f1
 
     l.s $f10, const_ten
-    li $t0, 1
+    
+    # --- STEP 1: Calculate the 1st decimal digit ---
+    li $t0, 1  # Run loop exactly once for the actual value
 
 ftos_loop_frac:
-    beq $t0, $zero, ftos_end_loop_frac
+    beq $t0, $zero, ftos_pad_zeros
     
     mul.s $f12, $f12, $f10
     trunc.w.s $f1, $f12
     mfc1 $t1, $f1
     
-    addi $t1, $t1, 48
+    addi $t1, $t1, 48       # Convert int to ASCII
     sb $t1, 0($s7)
     addi $s7, $s7, 1
     
@@ -993,13 +1017,36 @@ ftos_loop_frac:
     addi $t0, $t0, -1
     j ftos_loop_frac
 
-ftos_end_loop_frac:
-    sb $zero, 0($s7) # Null terminate
+ftos_pad_zeros:
+    # --- STEP 2: Manually Pad 3 Zeros ---
+    li $t1, 48              # ASCII for '0'
+    
+    sb $t1, 0($s7)          # 1st zero
+    addi $s7, $s7, 1
+    
+    sb $t1, 0($s7)          # 2nd zero
+    addi $s7, $s7, 1
+    
+    sb $t1, 0($s7)          # 3rd zero
+    addi $s7, $s7, 1
+
+    # --- End String ---
+    sb $zero, 0($s7)        # Null terminate
     
     lw $s7, 0($sp)
     lw $ra, 4($sp)
     addi $sp, $sp, 8
     jr $ra
+    
+
+
+# ftos_end_loop_frac:
+#     sb $zero, 0($s7) # Null terminate
+    
+#     lw $s7, 0($sp)
+#     lw $ra, 4($sp)
+#     addi $sp, $sp, 8
+#     jr $ra
 
 int_to_string_recursive:
     addi $sp, $sp, -8
